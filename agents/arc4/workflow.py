@@ -123,6 +123,12 @@ class WorkflowOrchestrator:
                 perception = self._invoke_phase("perceive", self._dependencies.perceive, state, current_observation)
                 phase_results.append(perception)
                 perception_payload = self._require_payload(perception, WorkflowPhase.PERCEIVE)
+                # A256: mirrors state.plan_degraded/vet_degraded/
+                # resolve_degraded/evaluate_degraded's own placement -- set
+                # immediately after the phase call, before any branching on
+                # the result. perceive has no replan-retry duplication, so
+                # this is the only call site.
+                state.perceive_degraded = getattr(perception_payload, "degraded", False)
                 state.previous_grid_hash = perception_payload.grid_hash
                 state.loop_history.append(perception_payload.grid_hash)
                 state.loop_history_pointer = len(state.loop_history) - 1

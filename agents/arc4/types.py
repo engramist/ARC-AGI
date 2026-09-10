@@ -70,6 +70,16 @@ class PerceptionSnapshot:
     repeated_grid_count: int = 0
     entities: tuple[PerceivedEntity, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
+    # A256: True when perceive.py's `_ingest_snapshot`'s
+    # `graph_query_port.ingest_perception(...)` call raised while producing
+    # this PerceptionSnapshot -- the failure already falls back to
+    # metadata["graph_ingestion"] == "failed" (the correct, unchanged
+    # behavior), this field just makes that degradation visible instead of
+    # silently absorbed, mirroring EvaluationResult.degraded (A244) /
+    # ResolvedGoal.degraded (A251) / PlanningResult.degraded (A237). Stays
+    # False both when graph_query_port is None (no graph configured -- not
+    # a failure) and when the ingest call this cycle succeeded.
+    degraded: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -80,6 +90,7 @@ class PerceptionSnapshot:
             "repeated_grid_count": self.repeated_grid_count,
             "entities": [e.to_dict() for e in self.entities],
             "metadata": self.metadata,
+            "degraded": self.degraded,
         }
 
     @classmethod
@@ -92,6 +103,7 @@ class PerceptionSnapshot:
             repeated_grid_count=d.get("repeated_grid_count", 0),
             entities=tuple(PerceivedEntity.from_dict(e) for e in d.get("entities", [])),
             metadata=d.get("metadata", {}),
+            degraded=d.get("degraded", False),
         )
 
 
@@ -603,6 +615,15 @@ class WorkflowState:
     # fetch_untested_actions except sites). "Most recent invocation's
     # outcome" for the cycle, same convention as plan_degraded/vet_degraded.
     evaluate_degraded: bool = False
+    # A256: same getattr(..., False) degrade pattern as annatar_degraded/
+    # resolve_degraded/plan_degraded/vet_degraded/evaluate_degraded above,
+    # but for the perceive phase -- set by WorkflowOrchestrator.run() right
+    # after the (single, non-duplicated) self._dependencies.perceive call,
+    # from PerceptionSnapshot.degraded (perceive.py's _ingest_snapshot
+    # except site). Unlike plan/vet/resolve/evaluate, perceive has no
+    # replan-retry duplication, so there's exactly one call site to set
+    # this from each cycle.
+    perceive_degraded: bool = False
     # Post-A206 fix (2026-08-25, user-directed live-smoke follow-up): how
     # many investigation-thread anchors in a row have concluded (ADVANCE)
     # without ever once registering meaningful_progress. Tracks whole-
@@ -683,6 +704,7 @@ class WorkflowState:
             "plan_degraded": self.plan_degraded,
             "vet_degraded": self.vet_degraded,
             "evaluate_degraded": self.evaluate_degraded,
+            "perceive_degraded": self.perceive_degraded,
             "annatar_unproductive_anchor_streak": self.annatar_unproductive_anchor_streak,
             "readiness_gate_resolved": self.readiness_gate_resolved,
             "readiness_gate_partial": self.readiness_gate_partial,
@@ -721,6 +743,7 @@ class WorkflowState:
             plan_degraded=d.get("plan_degraded", False),
             vet_degraded=d.get("vet_degraded", False),
             evaluate_degraded=d.get("evaluate_degraded", False),
+            perceive_degraded=d.get("perceive_degraded", False),
             annatar_unproductive_anchor_streak=d.get("annatar_unproductive_anchor_streak", 0),
             readiness_gate_resolved=d.get("readiness_gate_resolved", False),
             readiness_gate_partial=d.get("readiness_gate_partial", False),
