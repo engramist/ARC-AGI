@@ -332,6 +332,13 @@ class ArcV2Telemetry:
             # True (see evaluator.py's fetch_causal_path/
             # fetch_untested_actions except sites).
             "evaluate_degraded": bool(getattr(state, "evaluate_degraded", False)),
+            # A256: same getattr(..., False) degrade pattern as the other
+            # five _degraded fields above -- WorkflowState.perceive_degraded
+            # defaults False and is only ever set True by
+            # WorkflowOrchestrator.run() right after the perceive phase call
+            # whose PerceptionSnapshot.degraded came back True (see
+            # perceive.py's _ingest_snapshot except site).
+            "perceive_degraded": bool(getattr(state, "perceive_degraded", False)),
             "graph_informed": graph_informed,
             # A224: the Cynefin readiness gate's own telemetry, per the
             # plan's acceptance criteria -- a real, queryable fact rather

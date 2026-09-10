@@ -19,11 +19,17 @@ class PerceiveAgent:
     def __init__(self, graph_query_port: GraphQueryPort | None = None, *, loop_window: int = 32) -> None:
         self._graph_query_port = graph_query_port
         self._loop_window = max(1, int(loop_window))
+        # A256: mirrors PlanGenerator._degraded (A237) / GoalResolver
+        # ._degraded (A251) -- instance-scratch flag surfacing whether
+        # this file's sole graph-dependent call (_ingest_snapshot) raised
+        # during the most recent perceive() call.
+        self._degraded = False
 
     def __call__(self, state: WorkflowState, observation: Mapping[str, Any]) -> PhaseResult[PerceptionSnapshot]:
         return self.perceive(state, observation)
 
     def perceive(self, state: WorkflowState, observation: Mapping[str, Any]) -> PhaseResult[PerceptionSnapshot]:
+        self._degraded = False  # A256: reset at top, same convention as every other phase
         normalized_observation = self._normalize_observation(observation)
         grid = self._extract_grid(normalized_observation)
         normalized_grid = self._normalize_grid(grid)
@@ -89,6 +95,12 @@ class PerceiveAgent:
         )
 
         snapshot.metadata["graph_ingestion"] = self._ingest_snapshot(snapshot, state)
+        # A256: _ingest_snapshot may have just set self._degraded = True on
+        # failure -- snapshot was already constructed above (before this
+        # call), so sync the instance-scratch flag onto it now, mirroring
+        # A255's own necessary correction for EvaluationResult (the same
+        # construct-before-the-failure-prone-call ordering applies here).
+        snapshot.degraded = self._degraded
         return PhaseResult(phase=WorkflowPhase.PERCEIVE, payload=snapshot)
 
     @staticmethod
@@ -215,6 +227,7 @@ class PerceiveAgent:
         try:
             result = ingest(snapshot)
         except Exception:
+            self._degraded = True  # A256: was silently swallowed before
             return "failed"
 
         if result is None:
